@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "kioku — 未来の自分に残す",
+  "short_name": "kioku",
+  "description": "体験・感情・状態を未来の自分に残す、個人用の記憶ログ。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f4ef",
+  "theme_color": "#f5f4ef",
+  "lang": "ja",
+  "icons": [
+    {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"./icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}
