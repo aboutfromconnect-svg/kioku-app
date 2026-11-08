@@ -1,0 +1,7 @@
+# GitHub Pages: Deploy from a branch (main / root), using its standard Jekyll build.
+# Tests stay in Git for maintenance, but are not published as site assets.
+exclude:
+  - tests
+  - netlify-test-package
+  - README.md
+  - RELEASE.md

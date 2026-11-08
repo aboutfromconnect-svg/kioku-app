@@ -1,0 +1,6 @@
+# Local Netlify test copies must never be committed as production assets.
+/netlify-test-package/
+# Personal exports must not be committed.
+kioku-backup-*.json
+/_site/
+/.jekyll-cache/

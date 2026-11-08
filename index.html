@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
+  <meta name="kioku-release" content="0.1.1-safety2">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f5f4ef">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -64,7 +65,7 @@
             </div>
             <p class="state-note">入力はすべて任意。未来の自分への手掛かりだけ残せば十分です。</p>
           </details>
-          <div class="submit-row"><p>記録はこの端末に保存されます。<br>連続記録の目標はありません。</p><button id="saveEntry" type="submit" class="action">記憶を残す ↗</button></div>
+          <div class="submit-row"><p>記録はこの端末に保存されます。<br>連続記録の目標はありません。</p><button id="saveEntry" disabled type="submit" class="action">記憶を残す ↗</button></div>
         </form>
       </div>
       <div class="recent-head"><h2>最近の記憶</h2><button class="text-button" type="button" data-goto="history">すべて見る →</button></div><div id="recentList"></div>
@@ -89,9 +90,9 @@
 
     <section class="view" id="view-settings" aria-label="設定">
       <div class="mini-kicker">YOUR DATA</div><h1 class="section-title">記憶は、あなたのもの。</h1>
-      <div class="card"><div class="setting-section"><h2>バックアップ</h2><p>端末の故障やブラウザのデータ消去に備え、JSON形式で定期的に保存してください。写真も含まれます。</p><button type="button" id="exportData" class="setting-btn">↓ すべての記録を書き出す（JSON）</button><button type="button" id="importData" class="setting-btn">↑ バックアップから復元・追加する</button><input id="importFile" type="file" accept=".json,application/json" hidden><div class="import-note" id="backupStatus">まだバックアップしていません。</div></div>
+      <div class="card"><div class="setting-section"><h2>バックアップ</h2><p>端末の故障やブラウザのデータ消去に備え、JSON形式で定期的に保存してください。写真も含まれます。</p><button type="button" id="exportData" class="setting-btn">↓ すべての記録を書き出す（JSON）</button><button type="button" id="importData" class="setting-btn">↑ バックアップから復元・追加する</button><input id="importFile" type="file" accept=".json,application/json" hidden><div class="import-note" id="backupStatus">まだバックアップを作成していません。</div></div>
         <div class="divider"></div><div class="setting-section"><h2>保存について</h2><div class="privacy">🔒 日記本文・写真はこのブラウザの端末内データベースに保存され、専用サーバーには送信しません。天気を取得する場合に限り、位置座標をOpen-MeteoのAPIに送信します。座標は日記に保存しません。<br><br>⚠ Safariとホーム画面アプリの保存領域は別になる場合があります。使い始める場所を決め、定期的にバックアップしてください。</div></div>
-        <div class="divider"></div><div class="setting-section"><h2>アプリについて</h2><p>kioku v0.1 — 自分の体験・感情を、未来の自分へ残すための小さな道具。広告・ログイン・連続記録の強制はありません。</p><button type="button" id="persistStorage" class="setting-btn">端末に保存の保持をリクエストする</button></div>
+        <div class="divider"></div><div class="setting-section"><h2>アプリについて</h2><p>kioku v0.1.1 — 自分の体験・感情を、未来の自分へ残すための小さな道具。広告・ログイン・連続記録の強制はありません。</p><button type="button" id="persistStorage" class="setting-btn">端末に保存の保持をリクエストする</button></div>
         <div class="divider"></div><div class="setting-section"><h2>データ削除</h2><p>記録を削除すると、この端末から取り戻せません。バックアップを確認してから実行してください。</p><button type="button" id="deleteAll" class="setting-btn danger">すべての記録を削除する</button></div>
       </div>
       <div class="footer-note">Made for your everyday memories · kioku</div>
@@ -106,10 +107,18 @@
 </nav>
 <div id="detailModal" class="modal-wrap" role="dialog" aria-modal="true" aria-label="記録の詳細"><div class="modal"><div class="modal-header"><h2 id="modalTitle">記録</h2><button type="button" class="icon-btn" id="closeModal" aria-label="閉じる">×</button></div><div id="modalContent"></div><div class="modal-actions"><button type="button" id="removeEntry" class="text-button error">この記録を削除</button><button type="button" id="modalDone" class="outline-btn">閉じる</button></div></div></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="./data-safety.js?v=0.1.1-safety2" integrity="sha256-M3ajW9QHkehV4lzJo58vZj5OnRgQQKI84fmq8/hE0Y4="></script>
 <script>
 (()=>{'use strict';
   const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-  const DB_NAME='kioku-personal-v1',STORE='entries';
+  if(!globalThis.KiokuData || globalThis.KiokuData.RELEASE !== '0.1.1-safety2'){
+    const error=document.createElement('div');error.id='startupError';error.className='hint-alert';error.setAttribute('role','alert');
+    error.textContent='アプリの必要なファイルを読み込めませんでした。安全のため保存・復元・削除を停止しています。接続を確認し、アプリを閉じてから開き直してください。日記データの削除や初期化は不要です。';
+    document.querySelector('main').prepend(error);
+    document.querySelectorAll('button,input,textarea,select').forEach(control=>control.disabled=true);
+    return;
+  }
+  const STORE=KiokuData.STORE;
   let db=null, entries=[], selectedMoods=new Set(), pendingPhotos=[], composeType='episode', historyFilter='all', activeEntryId=null, randomId=null, busy=false;
   const moodEmoji={'楽しい':'😊','安心':'🌿','興味':'✨','不安':'😟','悲しい':'😢','焦り':'💭','疲れ':'🌙','普通':'😐'};
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -120,9 +129,9 @@
   const dateKey=(iso)=>{const d=new Date(iso);return Number.isFinite(d.getTime())?`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`:'--'};
   const humanDate=(iso,full=true)=>new Intl.DateTimeFormat('ja-JP',{year:full?'numeric':undefined,month:'long',day:'numeric',weekday:full?'short':undefined,hour:full?'2-digit':undefined,minute:full?'2-digit':undefined}).format(new Date(iso));
   const toast=(msg)=>{const el=$('#toast');el.textContent=msg;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),2700)};
-  function openDB(){return new Promise((resolve,reject)=>{if(!('indexedDB'in window)){reject(new Error('IndexedDB非対応'));return}const req=indexedDB.open(DB_NAME,1);req.onupgradeneeded=()=>req.result.createObjectStore(STORE,{keyPath:'id'});req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);req.onblocked=()=>reject(new Error('データベースが別のタブで使用されています'))})}
-  function transaction(mode,callback){return new Promise((resolve,reject)=>{let tx;try{tx=db.transaction(STORE,mode);const st=tx.objectStore(STORE);callback(st,tx);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('処理が中断されました'))}catch(e){reject(e)}})}
-  function getAll(){return new Promise((resolve,reject)=>{try{const req=db.transaction(STORE,'readonly').objectStore(STORE).getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error)}catch(e){reject(e)}})}
+  function openDB(){return KiokuData.openDatabase()}
+  function transaction(mode,callback){return new Promise((resolve,reject)=>{let tx;try{tx=db.transaction(STORE,mode);const st=tx.objectStore(STORE);callback(st,tx);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('処理が中断されました'))}catch(e){if(tx){try{tx.abort()}catch(_){}}reject(e)}})}
+  function getAll(){return KiokuData.readAll(db)}
   async function refresh(){entries=(await getAll()).sort((a,b)=>new Date(b.eventAt||b.createdAt)-new Date(a.eventAt||a.createdAt));renderRecent();renderHistory();renderReview()}
   function showTab(tab){$$('.view').forEach(e=>e.classList.toggle('active',e.id==='view-'+tab));$$('.nav').forEach(e=>{const on=e.dataset.tab===tab;e.classList.toggle('active',on);if(on)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')});if(tab==='review')renderReview();window.scrollTo(0,0)}
   function setType(type){composeType=type;if(type==='daily')$('#moreDetails').open=true;$$('[data-compose-type]').forEach(b=>b.classList.toggle('on',b.dataset.composeType===type));$('#entryTextLabel').innerHTML=type==='daily'?'今日の調子や出来事 <span class="opt">空欄でもOK</span>':'何があった？ 何を感じた？ <span class="opt">自由にどうぞ</span>';$('#entryText').placeholder=type==='daily'?'今日はどんな一日？　体調や睡眠だけの記録でもOK。':'楽しかったこと、嫌だったこと、ふと思ったこと。まとまっていなくても大丈夫。'}
@@ -144,13 +153,47 @@
   function infoLine(label,text){return text==null||text===''?'':`<div class="info-line"><strong>${esc(label)}</strong>${esc(text)}</div>`}
   function openDetail(id){const e=entries.find(x=>x.id===id);if(!e)return;activeEntryId=id;$('#modalTitle').textContent=e.type==='daily'?'今日の状態':'あの日の出来事';$('#modalContent').innerHTML=`<div class="modal-date">${esc(humanDate(e.eventAt))} の出来事<br>保存：${esc(humanDate(e.createdAt))}</div><div class="record-tags">${(e.moods||[]).map(m=>`<span class="pill">${esc(moodEmoji[m]||'•')} ${esc(m)}</span>`).join('')}</div>${e.text?`<div class="modal-text">${esc(e.text)}</div>`:'<div class="modal-text subtle">（自由記述なし）</div>'}<div class="info-list">${infoLine('当時の状況',e.situation)}${infoLine('感じた理由',e.reason)}${infoLine('天気',e.weather)}${infoLine('気温',e.temperature!=null?e.temperature+'℃':null)}${infoLine('気圧',e.pressure!=null?e.pressure+' hPa':null)}${infoLine('湿度',e.humidity!=null?e.humidity+'%':null)}${infoLine('風速',e.wind!=null?e.wind+' km/h':null)}${infoLine('睡眠',e.sleep!=null?e.sleep+'時間':null)}${infoLine('体調',e.condition!=null?e.condition+'/5':null)}${infoLine('疲労',e.fatigue!=null?e.fatigue+'/5':null)}</div>${(e.photos||[]).filter(p=>typeof p==='string'&&/^data:image\/(jpeg|png|webp);base64,/.test(p)).map(p=>`<img class="modal-photo" src="${attr(p)}" alt="記録に添付した写真">`).join('')}<div class="divider"></div><div class="card-title">あとから追記する</div><div class="muted small" style="margin-bottom:12px">当時の原文はそのまま残し、今の考えを区別して追加できます。</div><div id="annotationList">${(e.annotations||[]).map(a=>`<div class="annotation">${esc(a.text)}<small>追記：${esc(humanDate(a.at))}</small></div>`).join('')}</div><textarea id="annotationText" class="compose" style="min-height:85px" maxlength="5000" placeholder="今ならこう思う、あとから気づいたこと…"></textarea><button type="button" id="saveAnnotation" class="outline-btn" style="margin-top:9px">＋ 追記を保存する</button>`;$('#saveAnnotation').addEventListener('click',saveAnnotation);$('#detailModal').classList.add('open');document.body.style.overflow='hidden';$('#closeModal').focus()}
   function closeDetail(){activeEntryId=null;$('#detailModal').classList.remove('open');document.body.style.overflow=''}
-  async function saveAnnotation(){const text=$('#annotationText').value.trim();if(!text){toast('追記を入力してください');return}const e=entries.find(x=>x.id===activeEntryId);if(!e)return;const updated={...e,annotations:[...(e.annotations||[]),{at:new Date().toISOString(),text}]};try{await transaction('readwrite',st=>st.put(updated));await refresh();openDetail(e.id);toast('追記を保存しました')}catch(err){console.error(err);toast('追記を保存できませんでした')}}
+  async function saveAnnotation(){
+    const text=$('#annotationText').value.trim(),id=activeEntryId,button=$('#saveAnnotation');
+    if(!text){toast('追記を入力してください');return}if(!id||button.disabled)return;
+    button.disabled=true;
+    try{
+      await KiokuData.appendAnnotation(db,id,{at:new Date().toISOString(),text});
+      try{await refresh();if(activeEntryId===id)openDetail(id);toast('追記を保存しました')}catch(e){toast('追記は保存済みです。画面を再読み込みしてください')}
+    }catch(e){toast(e.message||'追記を保存できませんでした')}finally{button.disabled=false}
+  }
   async function removeEntry(){const id=activeEntryId;if(!id||!confirm('この記録を削除しますか？ 元には戻せません。'))return;try{await transaction('readwrite',st=>st.delete(id));closeDetail();await refresh();toast('記録を削除しました')}catch(e){toast('削除できませんでした')}}
   function downloadBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),120000)}
-  async function exportData(){try{const snapshot=await getAll();const payload={app:'kioku',version:1,exportedAt:new Date().toISOString(),entries:snapshot};const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});downloadBlob(blob,`kioku-backup-${dateKey(new Date().toISOString())}.json`);try{localStorage.setItem('kioku-last-backup',new Date().toISOString())}catch(e){}showBackupStatus();toast(`${snapshot.length}件のバックアップを作成しました`)}catch(e){toast('書き出しに失敗しました')}}
-  function normalizeImport(e){if(!e||typeof e!=='object'||typeof e.id!=='string'||!e.id||typeof e.createdAt!=='string'||typeof e.eventAt!=='string'||!Number.isFinite(new Date(e.eventAt).getTime()))return null;const str=x=>typeof x==='string'?x:'';const num=x=>typeof x==='number'&&Number.isFinite(x)?x:null;const photos=Array.isArray(e.photos)?e.photos.filter(p=>typeof p==='string'&&/^data:image\/(jpeg|png|webp);base64,/.test(p)).slice(0,3):[];return{id:e.id,schemaVersion:1,type:e.type==='daily'?'daily':'episode',createdAt:Number.isFinite(new Date(e.createdAt).getTime())?e.createdAt:e.eventAt,eventAt:e.eventAt,text:str(e.text),situation:str(e.situation),reason:str(e.reason),moods:Array.isArray(e.moods)?e.moods.filter(x=>typeof x==='string').slice(0,20):[],weather:str(e.weather)||null,temperature:num(e.temperature),pressure:num(e.pressure),humidity:num(e.humidity),wind:num(e.wind),sleep:num(e.sleep),condition:num(e.condition),fatigue:num(e.fatigue),photos,annotations:Array.isArray(e.annotations)?e.annotations.filter(a=>a&&typeof a.text==='string'&&typeof a.at==='string').map(a=>({text:a.text,at:a.at})):[]}}
-  async function importData(file){if(!file)return;if(file.size>120*1024*1024){toast('バックアップが大きすぎます（120MBまで）');return}try{const payload=JSON.parse(await file.text());if(payload.app!=='kioku'||!Array.isArray(payload.entries))throw new Error('kiokuのバックアップファイルではありません');const normalized=payload.entries.map(normalizeImport);if(normalized.some(x=>!x))throw new Error('バックアップに不正な記録があります');if(!confirm(`${normalized.length}件のバックアップを読み込みます。\n同じIDの記録は上書きせず、まだない記録だけ追加します。よろしいですか？`))return;const existing=new Set(entries.map(e=>e.id)),unique=new Map();normalized.forEach(e=>{if(!existing.has(e.id))unique.set(e.id,e)});await transaction('readwrite',st=>unique.forEach(e=>st.add(e)));await refresh();toast(`${unique.size}件を追加しました（既存データは保持）`)}catch(e){console.error(e);alert('読み込めませんでした：'+(e.message||e))}finally{$('#importFile').value=''}}
-  function showBackupStatus(){let at=null;try{at=localStorage.getItem('kioku-last-backup')}catch(e){}$('#backupStatus').textContent=at?`前回の書き出し：${humanDate(at)}`:'まだバックアップしていません。'}
+  let backupBusy=false;
+  function setBackupBusy(value){backupBusy=value;$('#exportData').disabled=value;$('#importData').disabled=value}
+  async function exportData(){
+    if(backupBusy)return;setBackupBusy(true);
+    try{
+      const snapshot=await getAll(),json=await KiokuData.createBackup(snapshot);
+      downloadBlob(new Blob([json],{type:'application/json;charset=utf-8'}),`kioku-backup-${dateKey(new Date().toISOString())}.json`);
+      try{localStorage.setItem('kioku-last-backup-created',new Date().toISOString())}catch(e){}
+      showBackupStatus();toast(`${snapshot.length}件を検証して作成しました。ファイルの保存完了を確認してください`);
+    }catch(e){alert('書き出しできませんでした：'+(e.message||e))}finally{setBackupBusy(false)}
+  }
+  async function importData(file){
+    if(!file||backupBusy)return;setBackupBusy(true);
+    try{
+      if(file.size>KiokuData.MAX_BYTES)throw new Error('バックアップは120MiBまでです');
+      const payload=await KiokuData.parseBackup(await file.text());
+      const plan=KiokuData.planRestore(await getAll(),payload.entries);
+      const conflictText=plan.conflicts.length?`\n内容が異なるID：${plan.conflicts.slice(0,10).join('、')}${plan.conflicts.length>10?' ほか':''}\nこれらの既存記録は保持し、バックアップ側の内容は取り込みません。`:'';
+      if(!confirm(`${payload.entries.length}件を検証しました。\n追加：${plan.added.length}件／同一内容：${plan.identical.length}件／内容の相違：${plan.conflicts.length}件${conflictText}\n${payload.version===1?'旧形式のため作成時の検査値はありません。\n':''}既存記録を保持し、未登録の記録だけ追加しますか？`))return;
+      await KiokuData.restore(db,payload.entries,plan);
+      try{await refresh()}catch(e){alert('復元の保存は完了しましたが、画面の更新に失敗しました。再読み込みしてください');return}
+      toast(`${plan.added.length}件を追加・照合しました（既存記録は保持）`);
+    }catch(e){alert('復元できませんでした。追加分は保存していません：'+(e.message||e))}
+    finally{$('#importFile').value='';setBackupBusy(false)}
+  }
+  function showBackupStatus(){
+    let at=null,legacy=null;try{at=localStorage.getItem('kioku-last-backup-created');legacy=localStorage.getItem('kioku-last-backup')}catch(e){}
+    const date=at||legacy;
+    $('#backupStatus').textContent=date&&Number.isFinite(Date.parse(date))?`${at?'前回の作成':'旧版での書き出し操作'}：${humanDate(date)}（保存完了は未確認。保存先でファイルを確認してください）`:'まだバックアップを作成していません。作成後は保存先でファイルを確認してください。';
+  }
   async function deleteAll(){if(!confirm('この端末内の記録をすべて削除します。バックアップがなければ復元できません。続けますか？'))return;const check=prompt('確認のため「削除」と入力してください');if(check!=='削除'){toast('削除をキャンセルしました');return}try{await transaction('readwrite',st=>st.clear());randomId=null;await refresh();toast('すべての記録を削除しました')}catch(e){toast('削除できませんでした')}}
   async function persistStorage(){if(!navigator.storage?.persist){toast('このブラウザでは利用できません');return}try{const ok=await navigator.storage.persist();toast(ok?'ストレージの保持が許可されました':'ブラウザ側の判断により許可されませんでした')}catch(e){toast('ストレージの保持を要求できませんでした')}}
   function bind(){ $$('.nav').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));$$('[data-goto]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.goto)));$$('[data-compose-type]').forEach(b=>b.addEventListener('click',()=>setType(b.dataset.composeType)));$$('.mood').forEach(b=>{b.setAttribute('aria-pressed','false');b.addEventListener('click',()=>{const m=b.dataset.mood;if(selectedMoods.has(m))selectedMoods.delete(m);else selectedMoods.add(m);const on=selectedMoods.has(m);b.classList.toggle('selected',on);b.setAttribute('aria-pressed',String(on))})});$('#entryText').addEventListener('input',()=>$('#charCount').textContent=$('#entryText').value.length+'文字');$('#entryForm').addEventListener('submit',saveEntry);$('#getWeather').addEventListener('click',loadWeather);$('#pickPhoto').addEventListener('click',()=>$('#photoInput').click());$('#photoInput').addEventListener('change',e=>addPhotos(e.target.files));$('#searchText').addEventListener('input',renderHistory);$('#searchDate').addEventListener('input',renderHistory);$$('[data-filter]').forEach(b=>b.addEventListener('click',()=>{historyFilter=b.dataset.filter;$$('[data-filter]').forEach(x=>x.classList.toggle('on',x===b));renderHistory()}));$('#closeModal').addEventListener('click',closeDetail);$('#modalDone').addEventListener('click',closeDetail);$('#detailModal').addEventListener('click',e=>{if(e.target===$('#detailModal'))closeDetail()});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetail()});$('#removeEntry').addEventListener('click',removeEntry);$('#anotherMemory').addEventListener('click',nextRandom);$('#exportData').addEventListener('click',exportData);$('#importData').addEventListener('click',()=>$('#importFile').click());$('#importFile').addEventListener('change',e=>importData(e.target.files[0]));$('#deleteAll').addEventListener('click',deleteAll);$('#persistStorage').addEventListener('click',persistStorage)}
