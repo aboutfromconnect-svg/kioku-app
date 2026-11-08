@@ -1,0 +1,15 @@
+{
+  "version": "0.2",
+  "release": "0.2-ui3",
+  "baseRevision": "7919e73e8af7331851f05eea5d90e10fae66190a",
+  "files": {
+    "index.html": "3a59a2bf5b5337d1610409ecbed7a9072817c811bdba923282b9566043469af1",
+    "data-safety.js": "3456b4a7cd10b7f8d5df9a0db5ae669186212a40097a0259b3816cdf71bbb740",
+    "environment.js": "4648c47d196fc144f2fce13c627604a3559bc68b3ea8efb731bad415c15de7dc",
+    "updates.js": "c5079b7ffa9d4d15f98cf65c8a7a2b251c91b797139a85947b8d7a4508d0ee3a",
+    "service-worker.js": "bf82a5fc02280e905137637dd49e9f09a153ab0aae6c0e9616dbf23f8faf470c",
+    "manifest.webmanifest": "64a4d8166197e068157d4f02f5988dc98ac0e06fee4832f00104b717e3d4a3a3",
+    "icons/icon-192.png": "e2ac8950a1889fc873d1bed2be43a2d45031231d7c5ca19397a5c0c593506613",
+    "icons/icon-512.png": "de1e4243bff5873431b6c53c3be43f7580f5792c36309970939b6f40c55ef7b1"
+  }
+}

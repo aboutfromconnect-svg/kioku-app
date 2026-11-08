@@ -3,7 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const {createHash}=require('node:crypto'),{execFileSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 const read=file=>fs.readFileSync(path.join(root,file),'utf8');
-const assets=['index.html','data-safety.js','service-worker.js','manifest.webmanifest','icons/icon-192.png','icons/icon-512.png'];
+const assets=['index.html','updates.js','environment.js','data-safety.js','service-worker.js','manifest.webmanifest','icons/icon-192.png','icons/icon-512.png'];
 for(const file of assets){
   assert(fs.statSync(path.join(root,file)).isFile());
   if(!file.endsWith('.png'))assert(!/kioku-test-|netlify-test|実機テスト専用/.test(read(file)),`Test content in ${file}`);
@@ -14,8 +14,11 @@ assert(html.includes('function openDB(){return KiokuData.openDatabase()}'));
 assert(!/deleteDatabase\s*\(|deleteObjectStore\s*\(/.test(data+html+sw));
 const integrity='sha256-'+createHash('sha256').update(fs.readFileSync(path.join(root,'data-safety.js'))).digest('base64');
 assert(html.includes(`integrity="${integrity}"`));assert(sw.includes(`INTEGRITY = '${integrity}'`));
-assert(!sw.includes('self.skipWaiting('));assert(read('.gitattributes').includes('*.js text eol=lf'));
+const environmentHash='sha256-'+createHash('sha256').update(fs.readFileSync(path.join(root,'environment.js'))).digest('base64');
+assert(html.includes(`integrity="${environmentHash}"`));assert(sw.includes(`ENVIRONMENT_INTEGRITY = '${environmentHash}'`));
+assert(sw.indexOf('await self.skipWaiting()')>sw.indexOf('await Promise.all(PRECACHE.map((url, i) => cache.put'));assert(!sw.includes('caches.delete('));assert(!sw.includes('.navigate('));assert(read('.gitattributes').includes('*.js text eol=lf'));
 for(const item of ['tests','netlify-test-package','README.md','RELEASE.md'])assert(read('_config.yml').includes('  - '+item));
+const updatesHash='sha256-'+createHash('sha256').update(fs.readFileSync(path.join(root,'updates.js'))).digest('base64');assert(html.includes(updatesHash));assert(sw.includes(updatesHash));
 assert(!fs.existsSync(path.join(root,'.nojekyll')),'Jekyll exclusions would be bypassed');
 const ignored=execFileSync('git',['check-ignore','netlify-test-package/v0.1.1/data-safety.js'],{cwd:root,encoding:'utf8'});
 assert(ignored.includes('netlify-test-package'));

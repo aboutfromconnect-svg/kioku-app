@@ -1,81 +1,117 @@
-# kioku v0.1.1 公開前確認とGitHub Desktop手順
+# kioku Ver.0.2 リリース前最終検証
 
-## 実機の確認記録
+検証日：2026-11-08。ブランチ：codex/kioku-v0.2-weather-location。
 
-利用者から、iPhone実機で旧版からの更新後も日記・写真・感情・追記が保持され、正常動作したとの報告を受領しました。また、旧形式Ver.1と新形式Ver.2のバックアップ復元の両方で、写真・感情・追記まで確認済みとの回答を受領しています。
+**判定：C. 修正が必要。正式公開は保留。** 利用者の通常Safariで更新確認がTypeErrorとなり、外部の未認証HTTP確認ではWorker URLがNetlifyのログインHTMLを401で返しました。認証・アクセス制限が有力候補ですが、Safari側の同じ応答はまだ未確認です。配信条件と更新経路を解決し、実機で既存データ保持を確認するまで公開しません。詳細は [追加診断](tests/SAFARI-UPDATE-FINDINGS.md) を参照してください。
 
-これは利用者による確認結果です。機種・iOSバージョン、Safariとホーム画面PWAそれぞれの内訳は記録されていません。以前のSAFETY-REPORTにある「実機未実施」はその自動検証時点の記録です。
+本体識別子は `0.2-ui3`、Netlify専用版は `0.2-netlify-test3`。本番8ファイルのSHA-256（内容の検査値）を `tests/release-candidate.json` に固定しました。今回アプリ本体は変更せず、試験と文書を更新しました。ローカルコミット、main更新、プッシュ、Pages更新、本番DBアクセスは行っていません。
 
-## 本番ファイルの確認
+## Ver.0.2リリースノート
 
-- DB名：`kioku-personal-v1`、DBバージョン：`1`、ストア：`entries` を維持。
-- DBの削除・ストアの削除・既存データの一括変換はありません。ストア作成は初回だけです。
-- 復元は未登録IDを追加し、同じIDの既存データは上書きしません。
-- 利用者の確認付き単件削除／全削除は既存機能として残っています。更新時には呼びません。
-- 本番HTML・JS・Service Worker・マニフェストに `kioku-test-iphone` などのテスト識別子はありません。
-- Service Workerは全ファイルとJSの検査値を確認してから導入し、旧画面が閉じるまで切り替えを待ちます。HTML・JS・Workerの識別子と検査値は一致しています。
-- 本番アプリのJSは今回の公開準備では変更していません。除外設定、公開チェック、サブパスでのテスト、手順書を追加しています。
+- 同意後の天気自動取得：天気・気温・体感温度・湿度・地表気圧・風速・風向・降水量・雲量と取得元・取得日時・対象日時。
+- 独立した位置保存設定：記録した場所と出来事の場所を分離し、名前付け・編集・削除に対応。両設定は初期値オフ、常時追跡なし。
+- 本文・感情を優先するUI。天気・場所は短い要約、技術情報は折りたたみ内。
+- 新版通知と利用者操作による切り替え。未保存入力がある場合は再読み込みを止める。通常時の通知は非表示。
+- Ver.0.1.1の安全な保存・バックアップを継続。形式1・2読込、形式2出力、未対応形式・不整合を安全に拒否。
 
-## コミットと配信の対象
+## 保存・本番配布の確認
 
-コミット対象：`index.html`、`data-safety.js`、`service-worker.js`、`README.md`、`.gitattributes`、`.gitignore`、`_config.yml`、`RELEASE.md`、`tests/`。
+- DB名 `kioku-personal-v1`、バージョン1、ストア `entries` を維持。既存DBの一括移行・初期化・更新時削除はありません。初回の空DBだけストアを作成します。
+- WorkerはDBへアクセスせず、ファイル取得・JSの検査値・HTMLの版番号・キャッシュ保存成功後に有効化。旧画面を強制再読み込みせず、旧キャッシュも保持します。
+- 復元は未登録IDを追加し、異なる同一IDを黙って上書きしません。追記と場所編集は他フィールドを保持します。
+- 利用者確認付きの既存「単件削除」「全削除」は残っています。削除コードが一切ないという意味ではなく、更新時には呼ばれません。
+- 位置保存オフの新規日記・バックアップにアプリが取得した正確な座標を追加しません。**過去に保存した位置は設定オフだけでは消えず、バックアップにも残ります。** 各日記から明示的に削除できます。本人が本文へ手入力した座標の自動除去はありません。
+- Open-Meteoへ送る座標は小数点以下2桁。日記本文・写真・感情・正確な測位座標は送信しません。APIキーなし。ただし丸めた位置とIPアドレスは外部サービスへ伝わります。
+- 本番アセットのテスト識別子・秘密情報パターン・外部通信箇所を点検し、混入は見つかりませんでした。パターン検査で全種類の秘密情報の不存在を保証するものではありません。
+- 本番配布は `index.html`、`data-safety.js`、`environment.js`、`updates.js`、`service-worker.js`、`manifest.webmanifest`、`icons/icon-192.png`、`icons/icon-512.png` の8ファイルです。相対参照と `/kioku-app/` 配下での更新を検証済み。
+- NetlifyコピーのDBは `kioku-test-iphone` のままGit対象外。本番へコピーしません。tests・文書は標準Jekyllの `_config.yml` で除外。独自Actionsが全フォルダーを配信する場合、この設定だけでは除外されないため8ファイルの許可リストで配信してください。
+- GitHub上のPages設定・Jekyll成果物・本番CDN応答は未確認。公開承認後、配信前に利用者が確認します。
 
-既存の `manifest.webmanifest` と `icons/` はそのまま保持します。
+## Safari更新問題と旧版からの手順
 
-- `netlify-test-package/` はローカル保存のまま、`.gitignore`でGit追加対象から除外しました。強制追加しないでください。
-- `tests/` は再現可能な検証のためGitに残しますが、`_config.yml`でGitHub Pages配信から除外します。READMEとこの手順書も配信から除外します。
-- `kioku-backup-*.json` はGit追加対象から除外。ほかの名前の個人ファイルもコミットしないでください。
-- 本番サイトに必要なアセットは `index.html`、`data-safety.js`、`service-worker.js`、`manifest.webmanifest`、2つのアイコンだけです。
+旧版はキャッシュ済みHTMLを返し、新Workerが待機しても通知しませんでした。修正版は検証済みWorkerを有効化しますが、旧画面には通知機能を後付けできません。Worker更新と画面の切り替えは別なので、最初の再読み込みで旧HTMLが見える場合があります。
 
-**この除外設定はGitHub Pagesの標準Jekyllビルド（Deploy from a branch / main / root）を前提とします。** GitHub Actionsでフォルダをそのまま配布する設定や`.nojekyll`を利用する場合、`_config.yml`の除外だけでは不十分です。独自配信に切り替える場合は上記アセットだけを配布してください。今回、GitHub上の設定は取得・変更していません。
+追加HTTPS試験では、旧コードの登録処理をそのまま実行し、試験側からregister/update/skipWaiting/unregisterを呼ばず、通常の再読み込みで更新を検出しました。新Workerの応答で切り替え完了を確認してから再度読み込むと、ルートとサブパス双方で新版が表示され、既存DBと別タブの未保存入力が保持されました。証明書とDB接続先だけ試験用にした隔離Chromium試験であり、Safariの合格を意味しません。
 
-## GitHub Desktop：コミットと作業ブランチのプッシュ
+一般的な仕組み：[Service Workerのライフサイクル](https://web.dev/articles/service-worker-lifecycle)。
 
-以下は利用者が確認後に実行する手順です。エージェントはコミット・プッシュ・マージを実行していません。
+1. 旧画面の入力・追記を保存し、バックアップを確保します。
+2. 修正版の配布完了後、同じ通常URL・同じ通常Safariでオンライン再読み込みします。プライベートモードや別プレビューURLは引継ぎ確認に使いません。
+3. 旧画面が出た場合は30〜60秒ほど前面表示で待ち、保存済みを確認して再読み込みします。この待ち時間は成功保証ではありません。連続再読み込みは避けます。
+4. PWAは保存後に終了し、同じ既存アイコンから再起動します。再インストールしません。
+5. 新しい天気・位置設定と「更新を確認」が表示されたら、件数・写真・感情・追記を確認します。以後は「更新を確認」と「更新する」を使います。
+6. 旧版のままなら公開保留。URL・iOS版・機種・Safari/PWA・配布識別子・オンライン状態・実施順序を記録します。必要ならMacのSafari開発ツールでテストサイトのWorker・キャッシュ版・通信失敗を読み取り診断します。サイトデータ消去・DB削除・PWA削除で解決しません。
 
-1. GitHub Desktopでリポジトリ `kioku-app` を選択。
-2. **Current Branch** が `codex/kioku-v0.1.1-data-safety` であることを確認。未コミットのままmainへ切り替えないでください。
-3. **Changes**で上記コミット対象だけが含まれることを確認。`netlify-test-package/`や個人バックアップが表示されないことを確認。
-4. 新規ファイルの `data-safety.js`、`.gitattributes`、`.gitignore`、`_config.yml`、`tests/` もチェックされていることを確認。
-5. Summaryに `Release kioku v0.1.1: protect diary data and backups` と入力し、**Commit to codex/kioku-v0.1.1-data-safety** を押す。
-6. GitHubのSettings → Pagesで、公開元が作業ブランチではなくmainであることを確認する。独自Actionsが全ブランチを自動公開する設定になっていないことも確認する。
-7. 作業ブランチを **Publish branch**（初回）または **Push origin** で送信。これは作業ブランチの共有であり、mainの更新ではありません。ただし実際の公開トリガーは手順6で確認した設定に依存します。
+## 自動テスト結果
 
-## 公開を決めた後：mainへのマージとプッシュ
+| 試験 | 成功グループ数 |
+|---|---:|
+| tests/run.cjs：保存・形式1/2・写真・追記・競合・中断 | 21 |
+| tests/weather-location.cjs：架空GPS・API・設定・過去日時・編集削除・UI | 21 |
+| tests/update-flow.cjs：通知・未保存保護・失敗 | 6 |
+| tests/update-safety.cjs：Ver.0.1→候補版、ルート | 19 |
+| tests/update-safety.cjs：Ver.0.1.1→候補版、/kioku-app/ | 19 |
+| Netlify verify-v0.2.cjs：実配布フォルダー更新 | 15 |
+| tests/legacy-bootstrap.cjs：HTTPS・自然な更新確認・2パス | 2 |
 
-1. 自分の普段使う本番アプリから最新バックアップを保存し、保存先で存在を確認する。バックアップをGitHubへ追加しない。
-2. Desktopの **Fetch origin** を押す。作業ブランチのコミットが完了し、Changesが空であることを確認。
-3. **Current Branch → main** に切り替え、**Pull origin** が出ていれば実行する。mainに別の変更が入っていた場合は、今回の確認結果だけで進めず差分を再確認する。
-4. **Branch → Merge into current branch…** を開き、`codex/kioku-v0.1.1-data-safety` を選択しmainへマージする。競合が出た場合、内容を確認せず一括採用しない。
-5. マージ結果の本番DB名、テスト用パッケージ不在、必要ファイル一式を確認する。
-6. **ここが公開の最終判断点です。** mainの **Push origin** を押すと、Pagesがmainを公開元としている場合は本番更新が始まります。
-7. GitHubの **Actions** でPagesのビルド・配信完了を確認する。テスト用パッケージがコミットに含まれていないこと、標準Jekyllビルドならtestsが配信対象から除外されることを確認する。
+計103グループ。tests/release-check.cjs、git diff --checkも確認。実日記・実測GPS・本番DBは使っていません。
 
-保護されたmainで直接プッシュできない場合は、作業ブランチからmainへのPull Requestを作成し、確認後にGitHub上でマージしてください。PRのマージでもmain更新により公開が始まります。
+最終検証で、試験コードの非同期待機をtests/wait-until.cjsに整理しました。従来の条件はPromise（完了前の処理）を返し、真偽値確定前に試験が進む場合がありました。関連試験は修正後に再実行しました。
 
-## 公開後の注意
+再現にはNode.js・Playwright・Chromeを使用し、必要に応じNODE_PATHとCHROME_PATHを指定します。HTTPS試験はOpenSSL（Windows既定はGit同梱版、OPENSSL_PATHで変更可能）で一時証明書を生成し、終了時に削除。OSへインストールしません。
 
-- 既存の本番URL・ドメイン・DB名を変えない。Netlifyのコピーを本番へコピーしない。
-- HTML・JS・Workerを同じコミットで公開し、JSの改行や内容を後から個別変更しない。検査値の不一致は安全停止につながります。
-- 古い画面が残る場合は対象サイトのタブとPWAを閉じて開き直す。日記を含むサイトデータやPWAの削除で対処しない。
-- 記録数・写真・感情・追記と、新形式のバックアップ書き出しを確認する。
-- 形式2のバックアップを旧v0.1に復元しない。旧版へ単純に戻しても新Workerのキャッシュが即時消えるわけではないため、不具合時はDBを消さず原因を調べる。
-- 容量不足やアプリキャッシュ破損の自動復旧は引き続き制約があります。安全停止してもDBは削除しません。
-
-## 自動テストの再実行
-
-今回の再実行結果：基本機能21グループ、更新試験16グループ（ルート）＋16グループ（`/kioku-app/`）、Netlify用パッケージ11グループ、計64グループが成功しました。加えて `tests/release-check.cjs` の公開前検査と `git diff --check` が成功しています。本番のIndexedDBは開いていません。
-
-Node.jsとPlaywrightを使い、必要なら `NODE_PATH` と `CHROME_PATH` を設定します。
-
-```text
+```powershell
 node tests/release-check.cjs
 node tests/run.cjs
+node tests/weather-location.cjs
+node tests/update-flow.cjs
 node tests/update-safety.cjs
+$env:KIOKU_LEGACY_REVISION='7919e73e8af7331851f05eea5d90e10fae66190a'
+$env:KIOKU_TEST_BASE_PATH='/kioku-app/'
+node tests/update-safety.cjs
+node tests/legacy-bootstrap.cjs
+node netlify-test-package/verify-v0.2.cjs
 ```
 
-PowerShellで `$env:KIOKU_TEST_BASE_PATH='/kioku-app/'` を設定して `tests/update-safety.cjs` を実行するとGitHub Pages相当のサブパスも検証できます。Netlifyのローカルパッケージが残っていれば `node netlify-test-package/verify.cjs` も実行できます。
+## iPhone最終合格条件（未実施）
 
-公開除外チェックは設定の静的検査で、GitHub Pagesの実ビルドではありません。実際の配信成功は公開後のActionsで確認します。
+同じNetlifyテストサイトで、通常Safariと既存ホーム画面PWAのそれぞれについて端末・iOS・日時・結果を記録します。
 
-公式資料：[Desktopでのコミット](https://docs.github.com/en/desktop/making-changes-in-a-branch/committing-and-reviewing-changes-to-your-project-in-github-desktop)、[ブランチの同期・マージ](https://docs.github.com/en/desktop/working-with-your-remote-repository-on-github-or-github-enterprise/syncing-your-branch-in-github-desktop)、[PagesのJekyll設定](https://docs.github.com/en/pages/setting-up-a-github-pages-site-with-jekyll/about-github-pages-and-jekyll)。
+- 旧Ver.0.1.1の件数・本文・写真・感情・追記・手入力天気が、上の更新手順後も一致。
+- 両設定オフ／天気のみ／位置のみ／両方を確認。天気のみの新規記録JSONに正確な座標がない。
+- GPS拒否・機内モード・API失敗でも本文保存可能。遅い取得結果が次の日記に混入しない。
+- 過去日時や旧日記へ現在の天気・出来事の位置が自動追加されず、手修正も上書きされない。
+- 場所の編集・削除で本文・写真・追記が保持される。
+- 形式1・2の架空JSONの復元、新版出力の気象・位置情報の保持。元DBを空にして試さない。
+- 新版通知時、未保存の日記・追記・場所編集があると切り替えが止まり、保存後は更新可能。同じ版の再配布だけでは通知は出ない。
+- 通常通知非表示、折りたたみ、縦画面・キーボード・オフライン再起動。
+
+## 公開前バックアップ（利用者が実行）
+
+1. 普段使う本番アプリの入力を保存。SafariとPWAは別保存領域の可能性があるためそれぞれ確認。
+2. JSONを書き出し、Filesで保存先を指定。「作成済み／保存完了は未確認」は保存成功の証拠ではありません。
+3. Filesで存在・サイズ・日時を確認し、端末外にも私的な予備コピーを保管。位置入りJSONは機微情報として扱い、GitHubやNetlifyへアップロードしません。
+4. 実個人日記を開発試験や公開テストサイトに取り込まず、復元機能の事前確認は架空JSONだけで行います。
+
+## 変更ファイルと公開準備
+
+本番コード：index.html、data-safety.js、environment.js（新規）、updates.js（新規）、service-worker.js。
+
+文書：README.md、RELEASE.md、tests/IPHONE-CHECKLIST.md、tests/V0.2-REPORT.md、tests/UPDATE-RETEST.md、tests/UI-REPORT.md。
+
+試験：tests/run.cjs、tests/update-safety.cjs、tests/release-check.cjs、tests/weather-location.cjs、tests/update-flow.cjs、tests/seal-release.cjs、今回追加のtests/legacy-bootstrap.cjs、tests/wait-until.cjs、tests/release-candidate.json。
+
+manifest・アイコン・DBバージョンは変更なし。Netlifyフォルダーと検証スクリプトはGit対象外です。
+
+実機合格と公開承認後、GitHub Desktopで作業ブランチを確認し、本番ファイル・新規JS・tests・文書をレビューしてコミットします。mainの基準は7919e73e8af7331851f05eea5d90e10fae66190a。公開前Fetchで別の変更があれば再検証してください。Pages公開元とActionsトリガーを確認し、承認後にのみプッシュ／mainへのマージを行います。main更新でPages公開が始まる設定ではマージも公開操作です。
+
+## 問題発生時・ロールバック
+
+1. 追加配信を止め、データを保護。動作可能なら利用者が追加バックアップを保存。天気・位置をオフにして手入力で継続できるか確認します。
+2. 旧版表示なら上記更新手順。読み込み失敗なら全配布ファイル・JS検査値・版番号・通信を確認。HTMLだけを差し替えません。
+3. **mainをVer.0.1.1へ単純に戻すだけでは安全な復旧完了になりません。** 旧Workerは待機・旧キャッシュ削除の仕様が異なり、開いた新版画面との混在も起きます。DBのダウングレード・初期化は禁止です。
+4. 原則は現在のDB、形式1/2互換性、安全なWorkerを維持した修正版を、未使用の新しい識別子・キャッシュ名で全ファイル一括配信します。SRIを再計算し、更新経路・復元・旧記録を架空データで再試験して承認を得ます。
+5. 旧UIが必要なら復旧ブランチへ必要部分だけ取り込み、v0.2追加フィールド保持と安全な更新機構を維持した新しい復旧版にします。この復旧版そのものは現時点では未作成・未検証です。
+6. バックアップ復元前に現在の記録を別ファイルへ保存。全削除して復元し直す手順は使いません。同じIDの相違は自動上書きされないため個別確認が必要です。
+
+残るリスク：Safari実機の更新時刻・OSの保存領域管理・強制終了・容量不足・旧キャッシュの蓄積。未保存保護は更新ボタンの再読み込みに対するもので、OS終了や手動ブラウザー再読み込みから入力を永続保護する機能ではありません。実機移行が失敗した場合、正式公開を中止します。

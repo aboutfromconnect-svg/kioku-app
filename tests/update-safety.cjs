@@ -1,3 +1,4 @@
+const waitUntil=require('./wait-until.cjs');
 // Real Chromium Service Worker tests, using only ephemeral profiles and synthetic data.
 const { chromium } = require('playwright');
 const { execFileSync } = require('node:child_process');
@@ -8,12 +9,15 @@ const http = require('node:http');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 // Pin the verified v0.1 baseline so later changes to main cannot change this test.
-const LEGACY_REVISION = '5fff049ee54f1a03be11a225d02e7c66fbffefea';
+const LEGACY_REVISION = process.env.KIOKU_LEGACY_REVISION || '5fff049ee54f1a03be11a225d02e7c66fbffefea';
 const read = file => fs.readFileSync(path.join(root,file));
-const current = read('index.html').toString().replace('function openDB(){return KiokuData.openDatabase()}', "function openDB(){return KiokuData.openDatabase(indexedDB,'kioku-test-upgrade')}");
-const legacy = execFileSync('git',['show',`${LEGACY_REVISION}:index.html`],{cwd:root,encoding:'utf8'}).replace("DB_NAME='kioku-personal-v1'", "DB_NAME='kioku-test-upgrade'");
+const current = read('index.html').toString().replace('KiokuUpdates.start(', '(()=>{})(').replace('function openDB(){return KiokuData.openDatabase()}', "function openDB(){return KiokuData.openDatabase(indexedDB,'kioku-test-upgrade')}");
+const legacy = execFileSync('git',['show',`${LEGACY_REVISION}:index.html`],{cwd:root,encoding:'utf8'}).replace("DB_NAME='kioku-personal-v1'", "DB_NAME='kioku-test-upgrade'").replace('function openDB(){return KiokuData.openDatabase()}',"function openDB(){return KiokuData.openDatabase(indexedDB,'kioku-test-upgrade')}");
 const legacySW = execFileSync('git',['show',`${LEGACY_REVISION}:service-worker.js`],{cwd:root});
-const release = '0.1.1-safety2', cacheName = 'kioku-static-' + release;
+const legacyHasModule=legacy.includes('./data-safety.js');
+const legacyData=legacyHasModule?execFileSync('git',['show',`${LEGACY_REVISION}:data-safety.js`],{cwd:root}):null;
+const legacyCache=legacyHasModule?'kioku-static-0.1.1-safety2':'kioku-static-v1';
+const release = '0.2-ui3', cacheName = 'kioku-static-' + release;
 const basePath = process.env.KIOKU_TEST_BASE_PATH || '/';
 assert(/^\/(?:[a-z0-9-]+\/)*$/.test(basePath));
 let version = 'old', fault = null, groups = 0;
@@ -29,8 +33,13 @@ const server = http.createServer((req,res) => {
     res.end(version === 'old' || fault === 'old-html' ? legacy : current);
   } else if (url.pathname === '/service-worker.js') {
     res.setHeader('Content-Type','text/javascript'); res.end(version === 'old' ? legacySW : read('service-worker.js'));
+  } else if (url.pathname === '/updates.js') {res.setHeader('Content-Type','text/javascript');if(fault==='missing-updates'){res.writeHead(404);res.end('missing')}else res.end(read('updates.js'));
+  } else if (url.pathname === '/environment.js') {
+    if(fault==='missing-environment'){res.writeHead(404);res.end('missing');}
+    else {res.setHeader('Content-Type','text/javascript');res.end(read('environment.js'));}
   } else if (url.pathname === '/data-safety.js') {
-    if (fault === 'missing-script') { res.writeHead(404); res.end('missing'); }
+    if(legacyHasModule&&url.searchParams.get('v')==='0.1.1-safety2'){res.setHeader('Content-Type','text/javascript');res.end(legacyData);}
+    else if (fault === 'missing-script') { res.writeHead(404); res.end('missing'); }
     else { res.setHeader('Content-Type','text/javascript'); res.end(fault === 'wrong-script' ? 'globalThis.KiokuData={RELEASE:"incompatible"};' : read('data-safety.js')); }
   } else if (['/manifest.webmanifest','/icons/icon-192.png','/icons/icon-512.png'].includes(url.pathname)) {
     res.setHeader('Content-Type',url.pathname.endsWith('.png')?'image/png':'application/manifest+json'); res.end(read(url.pathname.slice(1)));
@@ -43,8 +52,8 @@ const server = http.createServer((req,res) => {
     const hash = 'sha256-' + createHash('sha256').update(read('data-safety.js')).digest('base64');
     assert(current.includes(`integrity="${hash}"`));
     assert(read('service-worker.js').toString().includes(`const INTEGRITY = '${hash}'`));
-    assert(!read('service-worker.js').toString().includes('self.skipWaiting('));
-    pass('HTML and worker integrity hashes match actual script bytes; no forced activation');
+    assert(read('service-worker.js').toString().includes('await self.skipWaiting()'));
+    pass('HTML and worker integrity hashes match actual script bytes; verified activation without forced navigation');
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
     const base = `http://127.0.0.1:${server.address().port}${basePath}`;
     browser = await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{}),args:['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1']});
@@ -103,7 +112,7 @@ const server = http.createServer((req,res) => {
     version='new';await page.reload();await page.waitForFunction(()=>!document.querySelector('#saveEntry').disabled);
     assert.deepEqual(await snapshot(page),before);
     assert(!(await page.evaluate(()=>__dbAudit)).some(e=>['clear','delete','deleteDatabase','put','add'].includes(e.op)));
-    pass('Actual v0.1 to v0.1.1 UI upgrade preserves all data with zero writes');
+    pass('Actual legacy UI to v0.2 upgrade preserves all data with zero writes');
     // V2 complete export/restore into a separate database, including the unknown fields.
     const roundtrip=await page.evaluate(async()=>{
       const src=await KiokuData.openDatabase(indexedDB,'kioku-test-upgrade'),entries=await KiokuData.readAll(src);
@@ -112,7 +121,7 @@ const server = http.createServer((req,res) => {
       await KiokuData.restore(dst,payload.entries,KiokuData.planRestore([],payload.entries));
       const restored=await KiokuData.readAll(dst);src.close();dst.close();return restored;
     });assert.deepEqual(roundtrip,before);pass('V2 restores legacy diary, photo, moods, annotation and nested unknown fields exactly');
-    for(const failure of ['missing-script','wrong-script']) {
+    for(const failure of ['missing-script','wrong-script','missing-environment']) {
       fault=failure;await page.reload();await page.locator('#startupError').waitFor();
       assert.match(await page.locator('#startupError').innerText(),/削除や初期化は不要/);
       assert.equal(await page.locator('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled)').count(),0);
@@ -129,9 +138,9 @@ const server = http.createServer((req,res) => {
     assert.equal(await page.evaluate(()=>localStorage.getItem('kioku-last-backup')),null);
     pass('Cancelled/unconfirmed download never reports backup save success');await migration.close();
 
-    // True worker lifecycle: old worker remains active until ALL its windows close.
+    // Real worker lifecycle: failed installs preserve old active worker.
     // Failed installs must leave the old active worker intact.
-    for(const failure of ['missing-script','wrong-script','old-html']) {
+    for(const failure of ['missing-script','wrong-script','missing-environment','missing-updates','old-html']) {
       const failureContext=await context();page=await seedOld(failureContext);const original=await snapshot(page);
       await page.evaluate(async()=>{await navigator.serviceWorker.register('./service-worker.js');await navigator.serviceWorker.ready});
       await page.waitForFunction(()=>navigator.serviceWorker.controller);
@@ -148,7 +157,7 @@ const server = http.createServer((req,res) => {
         });
         await r.update();return settled;
       });assert.equal(state,'redundant');assert.deepEqual(await snapshot(page),original);
-      assert(await page.evaluate(()=>caches.has('kioku-static-v1')));
+      assert(await page.evaluate(name=>caches.has(name),legacyCache));
       pass(`Worker rejects ${failure} release and preserves old worker and diary`);
       await failureContext.close();
     }
@@ -156,33 +165,26 @@ const server = http.createServer((req,res) => {
     await page.evaluate(async()=>{await navigator.serviceWorker.register('./service-worker.js');await navigator.serviceWorker.ready});
     await page.waitForFunction(()=>navigator.serviceWorker.controller);
     const other=await swctx.newPage();await other.goto(base);await other.waitForFunction(()=>navigator.serviceWorker.controller);
+    await other.waitForFunction(()=>!document.querySelector('#saveEntry').disabled);
+    await other.locator('#entryText').fill('未保存の架空入力');
     version='new';fault=null;
     await page.evaluate(async()=>{const r=await navigator.serviceWorker.getRegistration();await r.update()});
-    await page.waitForFunction(async()=>Boolean((await navigator.serviceWorker.getRegistration()).waiting));
-    assert(await page.evaluate(()=>caches.has('kioku-static-v1')));
-    assert.equal(await page.evaluate(()=>typeof KiokuData),'undefined');
-    await page.close();
-    assert(await other.evaluate(async()=>Boolean((await navigator.serviceWorker.getRegistration()).waiting)));
+    await waitUntil(page,async()=>{const r=await navigator.serviceWorker.getRegistration();return r.active?.scriptURL && !r.installing && !r.waiting && caches.has('kioku-static-0.2-ui3')});
+    assert(await page.evaluate(name=>caches.has(name),legacyCache));
     assert.deepEqual(await snapshot(other),original);
-    pass('New complete release waits while even one old tab remains; old app continues working');
-    // Old network-first worker may serve new HTML before activation; SRI pins the matching script.
-    await other.reload();await other.waitForFunction(()=>globalThis.KiokuData?.RELEASE==='0.1.1-safety2');
-    assert.deepEqual(await snapshot(other),original);
-    pass('New HTML served by old worker loads matching script and preserves diary');
-    await other.close();
-    page=await swctx.newPage();await page.goto(base);await page.waitForFunction(async()=>{
-      const r=await navigator.serviceWorker.getRegistration();return r?.active&&!r.waiting&&Boolean(globalThis.KiokuData)&&!document.querySelector('#saveEntry').disabled;
-    });
+    pass('Verified worker activates with two legacy windows open; IndexedDB and old cache retained');
+    assert.equal(await other.locator('#entryText').inputValue(),'未保存の架空入力');
+    await page.reload();await page.waitForFunction(()=>globalThis.KiokuData?.RELEASE==='0.2-ui3');
+    assert.equal(await other.locator('#entryText').inputValue(),'未保存の架空入力');
+    pass('Reload switches one window to new release without reloading another draft');
     assert.deepEqual(await snapshot(page),original);
-    await page.waitForFunction(()=>caches.has('kioku-static-0.1.1-safety2'));
-    assert(!(await page.evaluate(()=>caches.keys())).includes('kioku-static-v1'));
-    pass('New worker activates after old windows close; cache cleanup does not touch IndexedDB');
+    pass('Manual reload preserves legacy records without closing all windows');
     // Server now intentionally serves an incompatible release. Cached shell must remain coherent.
-    fault='old-html';await page.reload();await page.waitForFunction(()=>globalThis.KiokuData?.RELEASE==='0.1.1-safety2');
+    fault='old-html';await page.reload();await page.waitForFunction(()=>globalThis.KiokuData?.RELEASE==='0.2-ui3');
     assert.deepEqual(await snapshot(page),original);pass('Active worker never swaps cached HTML for unrelated network HTML');
     fault=null;await swctx.setOffline(true);await page.reload();await page.waitForFunction(()=>!document.querySelector('#saveEntry').disabled);
     assert.deepEqual(await snapshot(page),original);pass('Complete new shell and existing diary work offline');
-    await page.evaluate(async cacheName=>{const c=await caches.open(cacheName);await c.delete('./data-safety.js?v=0.1.1-safety2')},cacheName);
+    await page.evaluate(async cacheName=>{const c=await caches.open(cacheName);await c.delete('./data-safety.js?v=0.2-ui3')},cacheName);
     await page.reload();await page.locator('#startupError').waitFor();assert.deepEqual(await page.evaluate(()=>__dbAudit),[]);
     assert.deepEqual(await snapshot(page),original);pass('Missing cached script fails closed offline without opening or modifying DB');
     await swctx.close();

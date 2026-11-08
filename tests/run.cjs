@@ -10,7 +10,9 @@ const source = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 assert(source.includes('function openDB(){return KiokuData.openDatabase()}'));
 const testApp = source.replace('function openDB(){return KiokuData.openDatabase()}', "function openDB(){return KiokuData.openDatabase(indexedDB,'kioku-test-ui')}");
 const server = http.createServer((req, res) => {
-  if (new URL(req.url, 'http://localhost').pathname === '/data-safety.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(fs.readFileSync(path.join(root, 'data-safety.js'))); }
+  if (new URL(req.url, 'http://localhost').pathname === '/updates.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(fs.readFileSync(path.join(root, 'updates.js'))); }
+  else if (new URL(req.url, 'http://localhost').pathname === '/environment.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(fs.readFileSync(path.join(root, 'environment.js'))); }
+  else if (new URL(req.url, 'http://localhost').pathname === '/data-safety.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(fs.readFileSync(path.join(root, 'data-safety.js'))); }
   else if (req.url === '/app') { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(testApp); }
   else if (req.url === '/') { res.setHeader('Content-Type', 'text/html'); res.end('<!doctype html><script src="/data-safety.js"></script>'); }
   else { res.writeHead(404); res.end(); }
@@ -145,7 +147,7 @@ const server = http.createServer((req, res) => {
     });
     for (const r of results.results) console.log(`${r.ok ? 'PASS' : 'FAIL'} ${r.name}${r.error ? '\n' + r.error : ''}`);
     assert(results.results.every(r => r.ok), 'Data tests failed');
-    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    const errors = []; page.on('pageerror', error => { errors.push(error.message); console.error(error.stack); });
     await page.goto(base + '/app');
     await page.locator('#saveEntry').waitFor();
     await page.waitForFunction(() => !document.querySelector('#saveEntry').disabled);

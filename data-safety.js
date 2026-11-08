@@ -1,4 +1,4 @@
-/* kioku 0.1.1: no database is opened until openDatabase is explicitly called. */
+/* kioku 0.2: no database is opened until openDatabase is explicitly called. */
 (function (root) {
   'use strict';
   const DB_NAME = 'kioku-personal-v1', DB_VERSION = 1, STORE = 'entries';
@@ -34,6 +34,18 @@
       // Do not truncate legacy records. Validate every photo and annotation instead.
       if (!Array.isArray(e.photos) || e.photos.some(p => typeof p !== 'string' || !/^data:image\/(jpeg|png|webp);base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(p) || p.endsWith(','))) fail('写真データが不正です');
       if (!Array.isArray(e.annotations) || e.annotations.some(a => !object(a) || typeof a.text !== 'string' || typeof a.at !== 'string' || !Number.isFinite(Date.parse(a.at)))) fail('追記データが不正です');
+      for (const key of ['apparentTemperature','windDirection','precipitation','cloudCover']) if (e[key] != null && (typeof e[key] !== 'number' || !Number.isFinite(e[key]))) fail('追加の気象データが不正です');
+      if (e.locations != null) {
+        if (!object(e.locations)) fail('位置情報が不正です');
+        for (const key of ['recording','event']) {
+          const p=e.locations[key]; if (p == null) continue;
+          if (!object(p) || !Number.isFinite(p.latitude) || !Number.isFinite(p.longitude) || Math.abs(p.latitude)>90 || Math.abs(p.longitude)>180 || (p.accuracy !== null && (!Number.isFinite(p.accuracy) || p.accuracy<0)) || !['automatic','manual'].includes(p.method) || !['geolocation','manual'].includes(p.provider) || typeof p.name!=='string' || (p.measuredAt!==null && (typeof p.measuredAt!=='string' || !Number.isFinite(Date.parse(p.measuredAt))))) fail('位置情報の値が不正です');
+        }
+      }
+      if (e.weatherMeta != null) {
+        const m=e.weatherMeta;
+        if (!object(m) || typeof m.provider!=='string' || !object(m.fieldSources) || !object(m.units) || !['automatic','manual'].includes(m.acquisition) || ['fetchedAt','observedAt'].some(key=>typeof m[key]!=='string'||!Number.isFinite(Date.parse(m[key])))) fail('気象データの出典が不正です');
+      }
       canonical(e); // Includes unknown fields; never rebuild or discard them.
     }
     return entries;
@@ -168,5 +180,19 @@
       };
     });
   }
-  root.KiokuData = Object.freeze({ RELEASE: '0.1.1-safety2', DB_NAME, DB_VERSION, STORE, MAX_BYTES, canonical, equal, validateEntries, createBackup, parseBackup, openDatabase, readAll, planRestore, restore, appendAnnotation });
+  function updateLocation(db, id, target, location) {
+    if (!['recording','event'].includes(target)) return Promise.reject(new Error('位置の種類が不正です'));
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(STORE,'readwrite'),st=tx.objectStore(STORE);let reason;
+      tx.oncomplete=()=>resolve();tx.onabort=()=>reject(reason||tx.error||new Error('場所の更新を中断しました'));
+      st.get(id).onsuccess=event=>{
+        try {
+          const e=event.target.result;if(!e)fail('記録が見つかりません');
+          const updated={...e,locations:{...(e.locations||{}),[target]:location}};
+          validateEntries([updated]);st.put(updated);
+        }catch(error){reason=error;tx.abort()}
+      };
+    });
+  }
+  root.KiokuData = Object.freeze({ RELEASE: '0.2-ui3', DB_NAME, DB_VERSION, STORE, MAX_BYTES, canonical, equal, validateEntries, createBackup, parseBackup, openDatabase, readAll, planRestore, restore, appendAnnotation, updateLocation });
 })(globalThis);
